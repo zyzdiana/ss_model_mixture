@@ -3,19 +3,27 @@ from libc.math cimport exp
 from libc.math cimport sqrt
 from libc.math cimport M_PI
 import numpy as np
-from cython_gsl cimport *
 
-cdef extern from "gsl/gsl_rng.h":
-	ctypedef struct gsl_rng_type
-	ctypedef struct gsl_rng
-    
-	gsl_rng_type *gsl_rng_mt19937
-	gsl_rng *gsl_rng_alloc(gsl_rng_type * T) nogil
-    
-cdef extern from "gsl/gsl_randist.h":
-	double gamma "gsl_ran_multinomial"(gsl_rng * r, int, int, double, int)
-
-cdef gsl_rng *r = gsl_rng_alloc(gsl_rng_mt19937)
+def resample(double[:] weights):
+	
+# 	cdef int n, j, i, ii
+# 	cdef double u0, u
+# # 	cdef int[:] indices
+# 	cdef double [:] C
+	n = len(weights)
+	C = np.empty(n)
+	C[0] = weights[0]
+	for ii in range(n-1):
+		i = ii + 1
+		C[i] = C[i-1] + weights[i]
+	
+	indices = []
+	u0, j = np.random.rand(), 0
+	for u in [(u0+i)/n for i in range(n)]:
+		while u > C[j]:
+			j+=1
+		indices.append(j-1)
+	return indices
 
 def smoothing(int T, int N, double Q, int M, double[:,:] X, double[:,:] W):
     
@@ -61,6 +69,34 @@ def smoothing(int T, int N, double Q, int M, double[:,:] X, double[:,:] W):
 			l = 0
 			while multinomialsamples[l] == 0:
 				l += 1
+			smoother[t,j] = X[t+1, l]
+	
+	return smoother
+	
+def smoothing2(int T, int N, double Q, int M, double[:,:] X):
+	cdef double[:] w_back = np.empty(N)
+	cdef double[:] W_BACK = np.empty(N)
+	cdef double[:,:] smoother = np.empty([T,M])
+	cdef double w_back_sum
+	cdef double const
+	
+	samples = np.floor(np.random.rand(M) * M)
+	for j in range(M):
+		smoother[T-1, j] = X[T, samples[j]]
+	
+	for tt in range(T-1):
+		t = T-2 -tt
+		for j in range(M):
+			w_back_sum = 0
+			for k in range(N):
+				w_back[k] = exp( -(smoother[t+1,j]-X[t+1,k]) ** 2 / (2 * Q))
+				w_back_sum += w_back[k]
+			for k in range(N):
+				W_BACK[k] = w_back[k]/w_back_sum
+			l=0
+			u = np.random.rand()
+			while u > W_BACK[j]:
+				l+=1
 			smoother[t,j] = X[t+1, l]
 	
 	return smoother
