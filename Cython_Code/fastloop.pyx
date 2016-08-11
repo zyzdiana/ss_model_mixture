@@ -11,18 +11,19 @@ def resample(double[:] weights):
 # # 	cdef int[:] indices
 # 	cdef double [:] C
 	n = len(weights)
-	C = np.empty(n)
-	C[0] = weights[0]
-	for ii in range(n-1):
-		i = ii + 1
-		C[i] = C[i-1] + weights[i]
-	
 	indices = []
+	C = np.empty(n+1)
+	C[0] = 0.0
+	for ii in range(n):
+		i = ii + 1
+		C[i] = C[i-1] + weights[i-1]
+	
 	u0, j = np.random.rand(), 0
 	for u in [(u0+i)/n for i in range(n)]:
 		while u > C[j]:
 			j+=1
 		indices.append(j-1)
+	
 	return indices
 
 def smoothing(int T, int N, double Q, int M, double[:,:] X, double[:,:] W):
@@ -79,10 +80,11 @@ def smoothing2(int T, int N, double Q, int M, double[:,:] X):
 	cdef double[:,:] smoother = np.empty([T,M])
 	cdef double w_back_sum
 	cdef double const
+
 	
-	samples = np.floor(np.random.rand(M) * M)
+	samples = np.floor(np.random.rand(M) * N)
 	for j in range(M):
-		smoother[T-1, j] = X[T, samples[j]]
+		smoother[T-1, j] = X[T, np.int(samples[j])]
 	
 	for tt in range(T-1):
 		t = T-2 -tt
@@ -91,11 +93,13 @@ def smoothing2(int T, int N, double Q, int M, double[:,:] X):
 			for k in range(N):
 				w_back[k] = exp( -(smoother[t+1,j]-X[t+1,k]) ** 2 / (2 * Q))
 				w_back_sum += w_back[k]
-			for k in range(N):
-				W_BACK[k] = w_back[k]/w_back_sum
+			W_BACK[0] = w_back[0]/w_back_sum
+			for kk in range(N-1):
+				k = kk + 1
+				W_BACK[k] = W_BACK[k-1] + w_back[k]/w_back_sum
 			l=0
 			u = np.random.rand()
-			while u > W_BACK[j]:
+			while u > W_BACK[l]:
 				l+=1
 			smoother[t,j] = X[t+1, l]
 	
